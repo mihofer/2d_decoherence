@@ -1,2 +1,5 @@
-matplotlib-label-lines==0.5.1
-tfs-pandas==3.4.0
+matplotlib-label-lines
+tfs-pandas
+scipy
+numpy 
+matplotlib
