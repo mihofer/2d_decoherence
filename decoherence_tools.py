@@ -4,12 +4,9 @@ import scipy.special
 import scipy.signal
 import tfs
 import matplotlib.pyplot as plt
-import matplotlib.colors as colors
 import re
 import pandas as pd
-import itertools
 import multiprocessing
-from labellines import labelLine, labelLines
 
 FONTSIZE=15
 
@@ -27,7 +24,7 @@ def calculate_Ix(I_y, w, tunes, jklm):
     j, k, l,m = str_to_jklm(jklm)
     divisor = ((1-j+k)*tunes['xx'] + (m-l)*tunes['yx']) 
     if divisor==0.:
-        divisor=1e-10
+        divisor=1e-22
     result = 0.5*(w - (1-j+k)*(tunes['x']+tunes['xy']*2*I_y) - (m-l)*(tunes['y']+tunes['yy']*2*I_y))/divisor
 #     typo in eq A.20 ?
     if result<0.0:
@@ -39,7 +36,7 @@ def calculate_Iy(I_x, w, tunes, jklm):
     j, k, l,m = str_to_jklm(jklm)  
     divisor = ((k-j)*tunes['xy'] + (1-l+m)*tunes['yy']) 
     if divisor==0.:
-        divisor=1e-10
+        divisor=1e-22
     result = 0.5*(w - (k-j)*(tunes['x']+tunes['xx']*2*I_x) - (1-l+m)*(tunes['y']+tunes['yx']*2*I_x))/divisor
 #     typo in eq A.20 ?
     if result<0.0:
@@ -52,7 +49,7 @@ def calculate_Ix_limits(w, tunes, jklm):
 #     find Iy where I_{x,mk0}(w, I_y) = offset + slope*I_y > 0
     divisor = ((1-j+k)*tunes['xx'] + (m-l)*tunes['yx'])
     if divisor ==0.:
-        divisor=1e-10
+        divisor=1e-22
     offset = (w - (1-j+k)*tunes['x'] - (m-l)*tunes['y'] )/divisor
     slope = (-(1-j+k)*tunes['xy']*2 - (m-l)*tunes['yy']*2 )/divisor
 
@@ -73,7 +70,7 @@ def calculate_Iy_limits(w, tunes, jklm):
 #     find Ix where I_{y,mk0}(w, I_x) = offset + slope*I_x > 0
     divisor = ((k-j)*tunes['xy'] + (1-l+m)*tunes['yy'])
     if divisor ==0.:
-        divisor=1e-10
+        divisor=1e-22
     offset = (w - (k-j)*tunes['x'] - (1-l+m)*tunes['y'] )/divisor
     slope = (-(k-j)*tunes['xx']*2 - (1-l+m)*tunes['yx']*2 )/divisor
      
@@ -116,11 +113,11 @@ def calculate_Ax(w, jklm, amplitudes, tunes):
     Imin, Imax = calculate_Ix_limits(w, tunes, jklm)
     if np.NaN in (Imin, Imax):
         return 0.0
-    
+
     divisor=np.abs((1-j+k)*tunes['xx']+(m-l)*tunes['yx'])
     if divisor==0.:
-        divisor=1e-10
-    return scipy.integrate.quad(integrand_Ax, Imin, Imax, args=(w, jklm, amplitudes, tunes,))[0] * j/divisor
+        divisor=1e-22
+    return scipy.integrate.quad(integrand_Ax, Imin, Imax, args=(w, jklm, amplitudes, tunes,), limits=1000)[0] * j/divisor
 
 
 def calculate_Ay(w, jklm, amplitudes, tunes):
@@ -135,9 +132,9 @@ def calculate_Ay(w, jklm, amplitudes, tunes):
 
     divisor=np.abs((k-j)*tunes['xy']+(1-l+m)*tunes['yy'])
     if divisor==0.:
-        divisor=1e-10
+        divisor=1e-22
 
-    return scipy.integrate.quad(integrand_Ay, Imin, Imax, args=(w, jklm, amplitudes, tunes,))[0] * l/divisor
+    return scipy.integrate.quad(integrand_Ay, Imin, Imax, args=(w, jklm, amplitudes, tunes,), limits=1000)[0] * l/divisor
 
 
 def find_peak_and_width(x,y):
@@ -160,15 +157,9 @@ def process_df_and_add_spectral_amplitude(df):
            'xy': df.headers['QXY'],
            'yx': df.headers['QYX'],
            'yy': df.headers['QYY']}
-    
-    spectral_amplitude_x=[]
-    spectral_amplitude_y=[]
-    for freq in df['FREQUENCY']:
-        spectral_amplitude_x.append(calculate_Ax(freq, jklm, amplitudes, tunes))
-        spectral_amplitude_y.append(calculate_Ay(freq, jklm, amplitudes, tunes))
-    
-    df['SPECTRAL_AMPLITUDE_X']=spectral_amplitude_x
-    df['SPECTRAL_AMPLITUDE_Y']=spectral_amplitude_y
+
+    df['SPECTRAL_AMPLITUDE_X']=df['FREQUENCY'].map(lambda x: calculate_Ax(x, jklm, amplitudes, tunes))
+    df['SPECTRAL_AMPLITUDE_Y']=df['FREQUENCY'].map(lambda x: calculate_Ay(x, jklm, amplitudes, tunes))
 
     df.headers['SPECTRAL_PEAK_X'], df.headers['SPECTRAL_FREQ_PEAK_X'], df.headers['SPECTRAL_WIDTH_X'], _, _ = find_peak_and_width(df['FREQUENCY'], df['SPECTRAL_AMPLITUDE_X'])
     df.headers['SPECTRAL_PEAK_Y'], df.headers['SPECTRAL_FREQ_PEAK_Y'], df.headers['SPECTRAL_WIDTH_Y'], _, _ = find_peak_and_width(df['FREQUENCY'], df['SPECTRAL_AMPLITUDE_Y'])
@@ -204,6 +195,7 @@ def analytical_Ax(w, jklm, amplitudes, tunes):
 def analytical_Ay(freq, jklm, amplitudes, tunes):
     return 0.0
 
+
 def process_df_and_add_analytical_spectral_amplitude(df):
     
     jklm = df.headers['jklm']
@@ -215,15 +207,8 @@ def process_df_and_add_analytical_spectral_amplitude(df):
            'yx': df.headers['QYX'],
            'yy': df.headers['QYY']}
     
-    
-    spectral_amplitude_x=[]
-    spectral_amplitude_y=[]
-    for freq in df['FREQUENCY']:
-        spectral_amplitude_x.append(analytical_Ax(freq, jklm, amplitudes, tunes))
-        spectral_amplitude_y.append(analytical_Ay(freq, jklm, amplitudes, tunes))
-
-    df['SPECTRAL_AMPLITUDE_X']=spectral_amplitude_x
-    df['SPECTRAL_AMPLITUDE_Y']=spectral_amplitude_y
+    df['SPECTRAL_AMPLITUDE_X']=df['FREQUENCY'].map(lambda x: analytical_Ax(x, jklm, amplitudes, tunes))
+    df['SPECTRAL_AMPLITUDE_Y']=df['FREQUENCY'].map(lambda x: analytical_Ay(x, jklm, amplitudes, tunes))
 
     df.headers['SPECTRAL_PEAK_X'], df.headers['SPECTRAL_FREQ_PEAK_X'], df.headers['SPECTRAL_WIDTH_X'], _, _ = find_peak_and_width(df['FREQUENCY'], df['SPECTRAL_AMPLITUDE_X'])
     df.headers['SPECTRAL_PEAK_Y'], df.headers['SPECTRAL_FREQ_PEAK_Y'], df.headers['SPECTRAL_WIDTH_Y'], _, _ = find_peak_and_width(df['FREQUENCY'], df['SPECTRAL_AMPLITUDE_Y'])
@@ -231,6 +216,7 @@ def process_df_and_add_analytical_spectral_amplitude(df):
     df.headers['FULL_SPECTRAL_WIDTH_X'] = np.sqrt(return_quadratic_deviation(df['FREQUENCY'], df['SPECTRAL_AMPLITUDE_X']))
     df.headers['FULL_SPECTRAL_WIDTH_Y'] = np.sqrt(return_quadratic_deviation(df['FREQUENCY'], df['SPECTRAL_AMPLITUDE_Y']))
     return df
+
 
 def prepare_figure():
     fig, ax = plt.subplots(nrows=2, ncols=1, figsize=(12,12))
@@ -245,6 +231,7 @@ def prepare_figure():
     ax[1].set_ylabel(r'$A_y~[a.u]$', fontsize=FONTSIZE)
         
     return fig, ax
+
 
 def add_spectrum_and_peaks(df, ax, color, label):
     ax[0].plot(df['FREQUENCY'], df['SPECTRAL_AMPLITUDE_X'], color=color, linewidth=2, label=label)
